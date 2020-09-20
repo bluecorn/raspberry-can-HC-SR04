@@ -17,7 +17,8 @@ set(INLUDE_DIRS libcanard socketcan)
 # Set the sources {include the headers}
 
 set(MAIN_SOURCE ./src/main.c)
-set(LIBCANARD_SRC libcanard/canard.h libcanard/canard.c) 
+set(LIBCANARD_SRC libcanard/canard.h libcanard/canard.c)
+set(LIBD_DSDL_SRC libcanard/carnard_dsdl.h libcanard/carnard_dsdl.c)
 set(SOCKETCAN_SRC socketcan/socketcan.h socketcan/socketcan.c)
 
 find_package(pigpio REQUIRED)
