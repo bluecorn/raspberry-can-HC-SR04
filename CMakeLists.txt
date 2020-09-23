@@ -8,7 +8,7 @@ set(PROJECT_NAME uavccan-templae-c)
 
 # Set the name of the executable
 
-set(EXECUTABLE_NAME can-node)
+set(EXECUTABLE_NAME ultrasound-can-node)
 
 # Set the inlude include directories
 
@@ -18,7 +18,7 @@ set(INLUDE_DIRS libcanard socketcan)
 
 set(MAIN_SOURCE ./src/main.c)
 set(LIBCANARD_SRC libcanard/canard.h libcanard/canard.c)
-set(LIBD_DSDL_SRC libcanard/carnard_dsdl.h libcanard/carnard_dsdl.c)
+set(LIB_DSDL_SRC libcanard/canard_dsdl.h libcanard/canard_dsdl.c)
 set(SOCKETCAN_SRC socketcan/socketcan.h socketcan/socketcan.c)
 
 find_package(pigpio REQUIRED)
@@ -30,7 +30,7 @@ include(CTest)
 enable_testing()
 
 include_directories(${INLUDE_DIRS} ${pigpio_INCLUDE_DIRS})
-add_executable(${EXECUTABLE_NAME} ${MAIN_SOURCE} ${LIBCANARD_SRC} ${SOCKETCAN_SRC})
+add_executable(${EXECUTABLE_NAME} ${MAIN_SOURCE} ${LIBCANARD_SRC} ${LIB_DSDL_SRC} ${SOCKETCAN_SRC})
 target_link_libraries(${EXECUTABLE_NAME} LINK_PRIVATE ${pigpio_LIBRARY})
 
 # Other settings

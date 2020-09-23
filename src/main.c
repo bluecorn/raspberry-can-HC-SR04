@@ -1,9 +1,17 @@
+/// This software is distributed under the terms of the MIT License.
+/// Copyright (c) 2020 Hugo A. Garcia
+/// Author: Hugo A. Garcia <hugo.a.garcia@gmail.com>
+/// Based on code by:
+///     Pavel Kirienko <pavel.kirienko@zubax.com>
+///     joan2937 <joan@abyz.me.uk>
 
 #include <canard.h>
+#include <canard_dsdl.h>
 #include <pigpio.h>
 #include <socketcan.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
+
 #include <time.h>
 
 /* Ultrasound GPIO pins */
@@ -12,13 +20,16 @@
 #define ECHO_PIN 24
 
 /* Message Subject ID's 
-   where ID = [0, 24575]
-   for Unregulated identifiers (both fixed and non-fixed).
-   from SpecificationRevision v1.0-alpha, p60.
-*/
+ * where ID = [0, 24575]
+ * for mandatory Heartbeat Message;
+ * for Ultrasound Message,
+ * ref. Unregulated identifiers (both fixed and non-fixed).
+ *      SpecificationRevision v1.0-alpha, sec. 5.1.1
+ */
 static const uint16_t HeartbeatSubjectID = 32085;
 static const uint16_t UltrasoundMessageSubjectID = 1610;
 
+// Memory management.
 static void *canardAllocate(CanardInstance *const ins, const size_t amount)
 {
     (void)ins;
@@ -31,6 +42,9 @@ static void canardFree(CanardInstance *const ins, void *const pointer)
     free(pointer);
 }
 
+/* Node heartbeat
+ * ref. SpecificationRevision v1.0-alpha, sec. 5.3.2
+ */
 static void publishHeartbeat(CanardInstance *const canard, const uint32_t uptime)
 {
     static CanardTransferID transfer_id;
@@ -56,36 +70,35 @@ static void publishHeartbeat(CanardInstance *const canard, const uint32_t uptime
     (void)canardTxPush(canard, &transfer);
 }
 
-static void publishUltrasoundDistance(CanardInstance *const canard, const uint32_t uptime)
+/* Ultrasound node functions using the pigpio library
+ * ref. http://abyz.me.uk/rpi/pigpio/index.html
+ * ref. http://abyz.me.uk/rpi/pigpio/ex_sonar_ranger.html
+ */
+static void publishUltrasoundDistance(CanardInstance *const canard, const float distance)
 {
     static CanardTransferID transfer_id;
-    const uint8_t payload[1] = {
-        (uint8_t)(uptime >> 0U)
-        // (uint8_t)(uptime >> 8U),
-        // (uint8_t)(uptime >> 16U),
-        // (uint8_t)(uptime >> 24U),
-        // 0,
-        // 0,
-        // 0,
-    };
+    uint8_t payload[4] = {0, 0, 0, 0};
+
+    //Serilize the distance
+    canardDSDLSetF32(payload, 0, distance);
+
     const CanardTransfer transfer = {
         .priority = CanardPriorityNominal,
         .transfer_kind = CanardTransferKindMessage,
         .port_id = UltrasoundMessageSubjectID,
         .remote_node_id = CANARD_NODE_ID_UNSET,
         .transfer_id = transfer_id,
-        .payload_size = sizeof(payload),
+        .payload_size = 4, // sizeof(payload),
         .payload = &payload[0],
     };
     ++transfer_id;
     (void)canardTxPush(canard, &transfer);
 }
 
-/* trigger a ultrasound reading with a 10us trigger pulse */
 void ultrasoundTrigger(void)
 {
     gpioWrite(TRIGGER_PIN, PI_ON);
-    gpioDelay(10); 
+    gpioDelay(10);
     gpioWrite(TRIGGER_PIN, PI_OFF);
 }
 
@@ -96,7 +109,8 @@ void ultrasoundEcho(int gpio, int level, uint32_t tick, void *canard_ins)
     int diffTick;
     double distanceCm;
 
-    if (!firstTick) firstTick = tick;
+    if (!firstTick)
+        firstTick = tick;
 
     if (level == PI_ON)
     {
@@ -109,6 +123,7 @@ void ultrasoundEcho(int gpio, int level, uint32_t tick, void *canard_ins)
 
         publishUltrasoundDistance(canard_ins, distanceCm);
 
+        //Debugging
         //printf("%u %u\ ", tick - firstTick, diffTick);
         printf("%f \n", distanceCm);
     }
@@ -121,17 +136,21 @@ int initializaUltrasoundSensor(CanardInstance *const ins)
 
     gpioSetMode(TRIGGER_PIN, PI_OUTPUT);
     gpioWrite(TRIGGER_PIN, PI_OFF);
-
     gpioSetMode(ECHO_PIN, PI_INPUT);
 
-    /* update ultrasound 20 times a second, timer #0 */
-    gpioSetTimerFunc(0, 50, ultrasoundTrigger); /* every 50ms */
+    // update ultrasound at 20 Hz
+    // timer #0, every 50ms, interrupt function
+    gpioSetTimerFunc(0, 50, ultrasoundTrigger);
 
-    /* monitor ultrasound echos */
-     gpioSetAlertFuncEx(ECHO_PIN, ultrasoundEcho, ins);
+    // monitor ultrasound echos
+    // pin, callback function, Canard instance
+    gpioSetAlertFuncEx(ECHO_PIN, ultrasoundEcho, ins);
     return 0;
 }
 
+/*
+ * MAIN 
+ */
 int main(const int argc, const char *const argv[])
 {
     if (argc != 3)
@@ -154,6 +173,7 @@ int main(const int argc, const char *const argv[])
         return 1;
     }
 
+    // Initialize ultrasound
     if (initializaUltrasoundSensor(&canard) < 0)
     {
         fprintf(stderr, "Could not initialize GPIO.");
@@ -179,7 +199,6 @@ int main(const int argc, const char *const argv[])
             canardTxPop(&canard);
             free((void *)txf);
             txf = canardTxPeek(&canard);
-            printf("push/n");
         }
     }
 }
